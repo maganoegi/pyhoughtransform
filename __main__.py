@@ -90,7 +90,7 @@ def draw_lines(edges, maxima, original, allow_mapping, ros, cosines, sines) -> N
             for i in range(NB_ANGLES):
                 ro = int((x * cosines[i]) + (y * sines[i])) if len(ros[x][y]) == 0 else ros[x][y][i]
                 if maxima[i][ro]: 
-                    original[x][y] = RED
+                    original[x][y] = GREEN
 
 
         percentage = 50 + (x * 100) // (2 * height)
