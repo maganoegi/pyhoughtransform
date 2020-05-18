@@ -52,12 +52,15 @@ def get_Hough_accumulator(img, allow_mapping) -> (np.array, list):
             ro_pixels = []
             # go over every possible angle theta for the pixel
             if not (allow_mapping and img[x][y] == 0):
-                for i in range(NB_ANGLES):
-                    ro = int((x * cosines[i]) + (y * sines[i]))
-                    if img[x][y] != 0:
+                if img[x][y] != 0:  # NOTE: CHANGES - before I calculated the ro value for every single pixel, mistake made when trying to record the ro values for later. 
+                                    # Maxima would still pop out, but SLOWERRR.
+                                    # Now I calculate only for the ones in edges
+                                    # Also changed to 180 - 1.0
+                    for i in range(NB_ANGLES):
+                        ro = int((x * cosines[i]) + (y * sines[i]))
                         accumulator[i][ro] += 1
 
-                    ro_pixels.append(ro)
+                        ro_pixels.append(ro)
                             
             ro_rows.append(ro_pixels)
         ros.append(ro_rows)
@@ -65,10 +68,10 @@ def get_Hough_accumulator(img, allow_mapping) -> (np.array, list):
         percentage = (x * 100) // (height * 2)
         if allow_pb: progress_bar.draw_progress_bar(percentage, "build acc")
     
-    return accumulator, ros
+    return accumulator, ros, cosines, sines
 
 
-def draw_lines(edges, maxima, original, allow_mapping, ros) -> None:
+def draw_lines(edges, maxima, original, allow_mapping, ros, cosines, sines) -> None:
     """ 
         * Uses the Hough accumulator to project the lines onto the source image. 
         * 2 modes: 
@@ -84,12 +87,11 @@ def draw_lines(edges, maxima, original, allow_mapping, ros) -> None:
             if allow_mapping and edges[x][y] == 0:
                 # when we are only interested in edges that contain an edge
                 continue
-
             for i in range(NB_ANGLES):
-                ro = ros[x][y][i]
-
+                ro = int((x * cosines[i]) + (y * sines[i])) if len(ros[x][y]) == 0 else ros[x][y][i]
                 if maxima[i][ro]: 
-                    original[x][y] = GREEN
+                    original[x][y] = RED
+
 
         percentage = 50 + (x * 100) // (2 * height)
         if allow_pb: progress_bar.draw_progress_bar(percentage, "draw lines")
@@ -100,7 +102,8 @@ def get_maxima(accumulator) -> np.array:
         * gets the maxima in a 2d np array. 
         * returns: np.array of bools, representing our maxima and their coordinates
     """
-    n = int(len(accumulator) * 0.15) # dynamically fixes the dimensions of the filter
+    n = int(len(accumulator) * 0.15) # dynamically fixes the dimensions of the filter (TODL: NEED TO BE CONTROLLED WITH INPUT)
+    # n = 2 # manually set it
 
     # apply the filters and do matrix operations
     data_max = filters.maximum_filter(accumulator, n)
@@ -136,7 +139,7 @@ def parse_input() -> (str, int, int, float, float, bool, bool):
     parser.add_argument('-cmin', '--canny_min', type=int, default=100, help='minimal threshold value for the Canny edge detection')
     parser.add_argument('-cmax', '--canny_max', type=int, default=255, help='maximal threshold value for the Canny edge detection')
     parser.add_argument('-hthresh', '--hough_thresh', type=float, default=0.35, help='percentage value used for Hough transform sensitivity')
-    parser.add_argument('-s', '--step', type=float, default=0.5, help='helps tune the precision and speed of the algorithm. Increase the value to increase performance (default 0.5)')
+    parser.add_argument('-s', '--step', type=float, default=1.0, help='helps tune the precision and speed of the algorithm. Increase the value to increase performance (default 0.5)')
     parser.add_argument('-m', '--map', default=False, action='store_true', help='maps the lines to the actual image - unlike the hough transform that draws the entire lines')
     parser.add_argument('-b', '--bar', default=False, action='store_true', help='allows the progress bar (may require dependencies!)')
     args = parser.parse_args()
@@ -148,7 +151,7 @@ if __name__ == "__main__":
 
     filename, canny_min, canny_max, hough_thresh, allow_mapping, angle_step, allow_pb = parse_input()
 
-    MAX_ANGLE = 360.0
+    MAX_ANGLE = 180.0
     NB_ANGLES = int(angle_step * MAX_ANGLE)
     ANGLES = np.linspace(0.0, MAX_ANGLE, NB_ANGLES)
 
@@ -167,14 +170,14 @@ if __name__ == "__main__":
     if allow_pb: progress_bar.init(color=True, dynamic=False, spinner=0, empty=True) # use the -p flag to enjoy the progress bar that guides you through this long process..
 
     print("\ncalculating the Hough accumulator...")
-    accumulator, ros = get_Hough_accumulator(edges, allow_mapping)
+    accumulator, ros, cosines, sines = get_Hough_accumulator(edges, allow_mapping)
     cv2.imwrite("accumulator.png", accumulator)
 
     print("\nGetting the local maxima...")
     maxima = get_maxima(accumulator)
 
     print("\nDrawing the lines onto the original image...")
-    draw_lines(edges, maxima, img, allow_mapping, ros)
+    draw_lines(edges, maxima, img, allow_mapping, ros, cosines, sines)
 
     print("\nsaving result image...")
     cv2.imwrite("final.png", img)
